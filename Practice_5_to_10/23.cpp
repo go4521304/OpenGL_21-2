@@ -16,7 +16,7 @@
 using namespace std;
 
 const float moveVal = 0.01f;
-const int angleVal = 1;
+const int angleVal = 5;
 
 int SCR_WIDTH = 1200, SCR_HEIGHT = 800;
 
@@ -92,6 +92,9 @@ int boxAngle = 0;
 glm::vec3 smallBoxPos[3] = { {0.0f, -0.85f, -0.5}, {0.0f, -0.9f, 0.0f}, {0.0f, -0.95f, 0.5f} };
 glm::vec3 smallBoxScale[3] = { { 0.3f, 0.3f, 0.3f } , { 0.2f, 0.2f, 0.2f } ,{ 0.1f, 0.1f, 0.1f } };
 
+int smallBoxAngle = 0, boxState = 0;
+bool isOpen = false;
+
 struct ball
 {
 	glm::vec3 position = { 0.0f, 0.0f, 0.0f };
@@ -129,6 +132,8 @@ int main(int argc, char** argv) //--- 윈도우 출력하고 콜백함수 설정
 		cout << "X: 카메라 x축 방향 이동" << endl;
 		cout << "Z: 카메라 Z축 방향 이동" << endl;
 		cout << "Y: 카메라 화면중심 기준 Y축 회전" << endl;
+		cout << "B: 공 튀기기" << endl;
+		cout << "O: 바닥 열기" << endl;
 		cout << "Q: 종료" << endl;
 	}
 
@@ -185,7 +190,10 @@ GLvoid drawScene()
 	m_box = m_model * m_box;
 	glUniformMatrix4fv(pModel, 1, GL_FALSE, glm::value_ptr(m_box));
 
-	for (int i = 0; i < 6; ++i)
+	int drawCube = 6;
+	if (isOpen)
+		drawCube = 5;
+	for (int i = 0; i < drawCube; ++i)
 	{
 		glUniform3f(PColor, cubeColor[i].r, cubeColor[i].g, cubeColor[i].b);
 		glDrawArrays(GL_TRIANGLES, i * 6, 6);
@@ -195,28 +203,13 @@ GLvoid drawScene()
 	for (int i = 0; i < 3; ++i)
 	{
 		glm::mat4 m_smallBox = glm::mat4(1.0f);
+		m_smallBox = glm::rotate(m_smallBox, glm::radians((float)boxAngle), { 0.0f, 0.0f, 1.0f });
 		m_smallBox = glm::translate(m_smallBox, smallBoxPos[i]);
 		m_smallBox = glm::scale(m_smallBox, smallBoxScale[i]);
-		m_smallBox = glm::rotate(m_smallBox, glm::radians((float)boxAngle), { 0.0f, 0.0f, 1.0f });
 		glUniformMatrix4fv(pModel, 1, GL_FALSE, glm::value_ptr(m_smallBox));
 		glDrawArrays(GL_TRIANGLES, 36, 36);
 	}
-	
-	/*
-	glm::mat4 m_smallBox2 = glm::mat4(1.0f);
-	m_smallBox2 = glm::translate(m_smallBox2, { (1.0f / 60.0f) * boxAngle * 0.9f * -1, -1.0f + 0.1f, 0.0f });
-	m_smallBox2 = glm::scale(m_smallBox2, );
-	m_smallBox2 = m_model * m_smallBox2;
-	glUniformMatrix4fv(pModel, 1, GL_FALSE, glm::value_ptr(m_smallBox2));
-	glDrawArrays(GL_TRIANGLES, 36, 36);
 
-	glm::mat4 m_smallBox3 = glm::mat4(1.0f);
-	m_smallBox3 = glm::translate(m_smallBox3, { (1.0f / 60.0f) * boxAngle * 0.95f * -1, -1.0f + 0.05f, 0.5f });
-	m_smallBox3 = glm::scale(m_smallBox3, );
-	m_smallBox3 = m_model * m_smallBox3;
-	glUniformMatrix4fv(pModel, 1, GL_FALSE, glm::value_ptr(m_smallBox3));
-	glDrawArrays(GL_TRIANGLES, 36, 36);
-	*/
 	glUniform3f(PColor, 0.0f, 0.0f, 1.0f);
 	GLUquadricObj* planet = gluNewQuadric();
 
@@ -375,6 +368,11 @@ void Keyboard(unsigned char key, int x, int y)
 			}
 		break;
 
+	case 'o':
+	case 'O':
+		isOpen = !isOpen;
+		break;
+
 	case 'Q':
 	case 'q':
 		std::cout << "Bye Bye~!" << std::endl;
@@ -424,10 +422,43 @@ void MouseClick(int button, int state, int x, int y)
 void Mouse(int x, int y)
 {
 	if (x > pastXpos)
+	{
 		boxAngle -= angleVal;
+		smallBoxAngle -= angleVal;
+	}
 	else if (x <= pastXpos)
+	{
 		boxAngle += angleVal;
+		smallBoxAngle += angleVal;
+	}
+	smallBoxAngle = smallBoxAngle % 90;
 
+	if (abs(smallBoxAngle) == 45)
+	{
+		if (smallBoxAngle > 0)
+			smallBoxAngle = -45;
+		else
+			smallBoxAngle = 45;
+	}
+
+	int tmpAngle = boxAngle % 360;
+
+	if ((-45 <= tmpAngle && tmpAngle < 45) || (315 <= tmpAngle || tmpAngle <= -315))
+	{
+		boxState = 0;
+	}
+	else if ((45 <= tmpAngle && tmpAngle < 135) || (-225 >= tmpAngle && tmpAngle > -315))
+	{
+		boxState = 1;
+	}
+	else if ((135 <= tmpAngle && tmpAngle < 225) || (-135 > tmpAngle && tmpAngle >= -225))
+	{
+		boxState = 2;
+	}
+	else
+	{
+		boxState = 3;
+	}
 }
 
 void Animate(int val)
@@ -453,13 +484,79 @@ void Animate(int val)
 
 			if (1.0f <= balls[i].position.x || -1.0f >= balls[i].position.x)
 				balls[i].direction.x *= -1;
-			if (1.0f <= balls[i].position.y || -1.0f >= balls[i].position.y)
+			if (1.0f <= balls[i].position.y || (-1.0f >= balls[i].position.y && !isOpen))
 				balls[i].direction.y *= -1;
 			if (1.0f <= balls[i].position.z || -1.0f >= balls[i].position.z)
 				balls[i].direction.z *= -1;
 		}
 	}
 
+	for (int i = 0; i < 3; ++i)
+	{
+		if (0 <= smallBoxAngle)
+		{
+			if (boxState == 0)
+			{
+				if (smallBoxPos[i].x - (smallBoxScale[i].x / 2) > -1.0f)
+					smallBoxPos[i].x -= moveVal;
+				if (smallBoxPos[i].y - (smallBoxScale[i].y / 2) > -1.0f || isOpen)
+					smallBoxPos[i].y -= moveVal;
+			}
+			else if (boxState == 1)
+			{
+				if (smallBoxPos[i].x - (smallBoxScale[i].x / 2) > -1.0f)
+					smallBoxPos[i].x -= moveVal;
+				if (smallBoxPos[i].y + (smallBoxScale[i].y / 2) < 1.0f)
+					smallBoxPos[i].y += moveVal;
+			}
+			else if (boxState == 2)
+			{
+				if (smallBoxPos[i].x + (smallBoxScale[i].x / 2) < 1.0f)
+					smallBoxPos[i].x += moveVal;
+				if (smallBoxPos[i].y + (smallBoxScale[i].y / 2) < 1.0f)
+					smallBoxPos[i].y += moveVal;
+			}
+			else
+			{
+				if (smallBoxPos[i].x + (smallBoxScale[i].x / 2) < 1.0f )
+					smallBoxPos[i].x += moveVal;
+				if (smallBoxPos[i].y - (smallBoxScale[i].y / 2) > -1.0f)
+					smallBoxPos[i].y -= moveVal;
+			}
+		}
+
+		if (0 >= smallBoxAngle)
+		{
+			if (boxState == 0)
+			{
+				if (smallBoxPos[i].x + (smallBoxScale[i].x / 2) < 1.0f)
+					smallBoxPos[i].x += moveVal;
+				if (smallBoxPos[i].y - (smallBoxScale[i].y / 2) > -1.0f || isOpen)
+					smallBoxPos[i].y -= moveVal;
+			}
+			else if (boxState == 1)
+			{
+				if (smallBoxPos[i].x - (smallBoxScale[i].x / 2) > -1.0f)
+					smallBoxPos[i].x -= moveVal;
+				if (smallBoxPos[i].y - (smallBoxScale[i].y / 2) > -1.0f)
+					smallBoxPos[i].y -= moveVal;
+			}
+			else if (boxState == 2)
+			{
+				if (smallBoxPos[i].x - (smallBoxScale[i].x / 2) > -1.0f)
+					smallBoxPos[i].x -= moveVal;
+				if (smallBoxPos[i].y + (smallBoxScale[i].y / 2) < 1.0f)
+					smallBoxPos[i].y += moveVal;
+			}
+			else
+			{
+				if (smallBoxPos[i].x + (smallBoxScale[i].x / 2) < 1.0f)
+					smallBoxPos[i].x += moveVal;
+				if (smallBoxPos[i].y + (smallBoxScale[i].y / 2) < 1.0f)
+					smallBoxPos[i].y += moveVal;
+			}
+		}
+	}
 
 
 	glutTimerFunc(10, Animate, 0);
